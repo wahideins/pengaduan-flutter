@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "546147052532",
+    "firebase_url": "https://pengaduan-masyarakat-aca90-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "pengaduan-masyarakat-aca90",
+    "storage_bucket": "pengaduan-masyarakat-aca90.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:546147052532:android:20faca28283ee53c53a7a1",
+        "android_client_info": {
+          "package_name": "com.example.uts"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMf32BcsIaeI2V6XE5lkGfD1mnWY6ovRM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
