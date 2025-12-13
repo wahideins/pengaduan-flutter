@@ -39,7 +39,7 @@ class PengaduanCard extends StatelessWidget {
           },
         ),
         onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => DetailScreen(pengaduan: pengaduan)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPengaduanScreen(pengaduan: pengaduan)));
         },
       ),
     );

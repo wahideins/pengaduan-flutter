@@ -1,109 +1,73 @@
-import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:uuid/uuid.dart';
 import '../models/pengaduan.dart';
-import 'supabase_service.dart';
 
 class FirebaseService {
-  final DatabaseReference _dbRef =
-      FirebaseDatabase.instance.ref().child('pengaduan');
-  final SupabaseService supabase = SupabaseService();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final _db = FirebaseDatabase.instance.ref('pengaduan');
+  final _auth = FirebaseAuth.instance;
+  final DatabaseReference _userRef = FirebaseDatabase.instance.ref('users');
 
-  /// CREATE
-  Future<void> tambahPengaduan({
-    required String nama,
-    required String alamat,
-    required String noTelp,
-    required String isiPengaduan,
-    File? imageFile,
-  }) async {
-    final id = const Uuid().v4();
-    final userId = _auth.currentUser?.uid ?? 'anonymous';
+  /// 🟢 Tambah pengaduan baru, otomatis ambil data user login
+  Future<void> tambahPengaduan(Pengaduan pengaduan) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User belum login');
 
-    String? imageUrl;
-    if (imageFile != null) {
-      imageUrl = await supabase.uploadImage(imageFile);
+    // Ambil profil user
+    final userProfileSnap = await _userRef.child(user.uid).get();
+    if (!userProfileSnap.exists) {
+      throw Exception('Profil pengguna tidak ditemukan');
     }
 
-    final p = Pengaduan(
-      id: id,
-      userId: userId,
-      nama: nama,
-      alamat: alamat,
-      noTelp: noTelp,
-      isiPengaduan: isiPengaduan,
-      gambarUrl: imageUrl,
+    final userProfile = Map<String, dynamic>.from(userProfileSnap.value as Map);
+
+    // Format alamat lengkap
+    final alamatLengkap =
+        '${userProfile['alamat']['jalan']}, ${userProfile['alamat']['kelurahan']}, ${userProfile['alamat']['kecamatan']}, Kediri, Indonesia';
+
+    // Buat instance baru pengaduan dengan data user
+    final newPengaduan = Pengaduan(
+      userId: user.uid,
+      nama: userProfile['nama'] ?? user.displayName ?? 'Tanpa Nama',
+      alamat: alamatLengkap,
+      noTelp: userProfile['noTelp'] ?? user.phoneNumber ?? '-',
+      isiPengaduan: pengaduan.isiPengaduan,
+      gambarUrl: pengaduan.gambarUrl,
+      videoUrl: pengaduan.videoUrl,
+      lokasi: pengaduan.lokasi,
+      status: pengaduan.status ?? 'proses',
+      visibility: pengaduan.visibility,
+      createdAt: DateTime.now(),
     );
 
-    await _dbRef.child(id).set(p.toMap());
+    await _db.push().set(newPengaduan.toMap());
   }
 
-  /// READ -> hanya milik user saat ini
-  Stream<List<Pengaduan>> getPengaduanStream() {
-    final userId = _auth.currentUser?.uid ?? 'anonymous';
-    return _dbRef.onValue.map((event) {
-      final snapshot = event.snapshot;
-      final val = snapshot.value;
-      if (val == null) return <Pengaduan>[];
-      final Map<String, dynamic> map = Map<String, dynamic>.from(val as Map);
-      final list = <Pengaduan>[];
-      map.forEach((key, value) {
-        final m = Map<String, dynamic>.from(value);
-        if (m['userId'] == userId) {
-          list.add(Pengaduan.fromMap(m, key));
-        }
-      });
-      return list.reversed.toList();
+  
+  Future<Map<String, dynamic>?> getCurrentUserProfile() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    final snapshot = await _userRef.child(user.uid).get();
+    if (snapshot.exists) {
+      return Map<String, dynamic>.from(snapshot.value as Map);
+    }
+    return null;
+  }
+
+  Stream<List<Pengaduan>> getPengaduanUser() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return const Stream.empty();
+
+    return _db.onValue.map((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
+      return data.entries
+          .map((e) => Pengaduan.fromMap(Map<String, dynamic>.from(e.value), e.key))
+          .where((p) => p.userId == userId)
+          .toList();
     });
   }
 
-  /// UPDATE
-  Future<void> updatePengaduan({
-    required String id,
-    required String nama,
-    required String alamat,
-    required String noTelp,
-    required String isiPengaduan,
-    File? newImageFile,
-  }) async {
-    final snap = await _dbRef.child(id).get();
-    String? oldUrl;
-    if (snap.exists && snap.value != null) {
-      final m = Map<String, dynamic>.from(snap.value as Map);
-      oldUrl = (m['gambarUrl'] != null && m['gambarUrl'] != '') ? m['gambarUrl'] : null;
-    }
-
-    String? newUrl = oldUrl;
-    if (newImageFile != null) {
-      newUrl = await supabase.uploadImage(newImageFile);
-      if (oldUrl != null && oldUrl.isNotEmpty) {
-        await supabase.deleteImageByUrl(oldUrl);
-      }
-    }
-
-    final updated = {
-      'nama': nama,
-      'alamat': alamat,
-      'noTelp': noTelp,
-      'isiPengaduan': isiPengaduan,
-      'gambarUrl': newUrl,
-    };
-
-    await _dbRef.child(id).update(updated);
-  }
-
-  /// DELETE
   Future<void> hapusPengaduan(String id) async {
-    final snap = await _dbRef.child(id).get();
-    if (snap.exists && snap.value != null) {
-      final m = Map<String, dynamic>.from(snap.value as Map);
-      final gambarUrl = (m['gambarUrl'] != null && m['gambarUrl'] != '') ? m['gambarUrl'] : null;
-      if (gambarUrl != null) {
-        await supabase.deleteImageByUrl(gambarUrl);
-      }
-    }
-    await _dbRef.child(id).remove();
+    await _db.child(id).remove();
   }
 }

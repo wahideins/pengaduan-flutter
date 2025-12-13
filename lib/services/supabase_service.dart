@@ -2,41 +2,19 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
-  final _supabase = Supabase.instance.client;
-  final String bucket = 'pengaduan'; // BUCKET name di Supabase Storage
+  final SupabaseClient _client = Supabase.instance.client;
 
-  /// Upload file, return publicUrl (String) atau null jika gagal
-  Future<String?> uploadImage(File file) async {
+  Future<String?> uploadFile(File file, String folder) async {
     try {
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-      // upload
-      await _supabase.storage.from(bucket).upload(fileName, file);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.uri.pathSegments.last}';
+      final path = '$folder/$fileName';
 
-      // ambil public URL
-      final publicUrl = _supabase.storage.from(bucket).getPublicUrl(fileName);
-      return publicUrl;
+      await _client.storage.from('pengaduan').upload(path, file);
+      final url = _client.storage.from('pengaduan').getPublicUrl(path);
+      return url;
     } catch (e) {
-      print('Supabase upload error: $e');
+      print('Error upload: $e');
       return null;
-    }
-  }
-
-  /// Hapus file dari bucket (mengambil nama file dari public URL)
-  Future<bool> deleteImageByUrl(String publicUrl) async {
-    try {
-      // contoh publicUrl: https://.../storage/v1/object/public/pengaduan-images/123.jpg
-      final uri = Uri.parse(publicUrl);
-      final segments = uri.pathSegments;
-      // filename adalah last segment
-      final fileName = segments.isNotEmpty ? segments.last : null;
-      if (fileName == null) return false;
-
-      final res = await _supabase.storage.from(bucket).remove([fileName]);
-      // res akan kosong jika sukses (no exception)
-      return true;
-    } catch (e) {
-      print('Supabase delete error: $e');
-      return false;
     }
   }
 }
