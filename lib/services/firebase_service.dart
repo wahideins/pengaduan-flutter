@@ -7,6 +7,40 @@ class FirebaseService {
   final _auth = FirebaseAuth.instance;
   final DatabaseReference _userRef = FirebaseDatabase.instance.ref('users');
 
+  Future<String> getUserRole() async {
+    final user = _auth.currentUser;
+    if (user == null) return 'user';
+
+    final snap = await _userRef.child(user.uid).child('role').get();
+    return snap.value?.toString() ?? 'user';
+  }
+
+  Stream<List<Pengaduan>> getPengaduanByRole(String role) {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return const Stream.empty();
+
+    return _db.onValue.map((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
+
+      final list = data.entries.map((e) {
+        return Pengaduan.fromMap(
+          Map<String, dynamic>.from(e.value),
+          e.key,
+        );
+      }).toList();
+
+      // 🟢 ADMIN → semua pengaduan (public & private)
+      if (role == 'kelurahan') {
+        return list;
+      }
+
+      // 🟢 USER → hanya pengaduan miliknya (public & private)
+      return list.where((p) => p.userId == userId).toList();
+    });
+  }
+
+
+
   /// 🟢 Tambah pengaduan baru, otomatis ambil data user login
   Future<void> tambahPengaduan(Pengaduan pengaduan) async {
     final user = _auth.currentUser;

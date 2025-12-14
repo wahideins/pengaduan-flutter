@@ -26,7 +26,10 @@ class PengaduanPage extends StatelessWidget {
           itemCount: list.length,
           itemBuilder: (context, index) {
             final p = list[index];
-            return PengaduanCard(pengaduan: p);
+            return PengaduanCard(
+              pengaduan: p,
+              editable: false,
+              );
           },
         );
       },

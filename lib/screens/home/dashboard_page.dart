@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/pengaduan.dart';
 import '../../services/firebase_service.dart';
-import '../detail_screen.dart';
 import 'package:firebase_in_app_messaging/firebase_in_app_messaging.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_app_installations/firebase_app_installations.dart';
+import '../../widgets/pengaduan_card.dart';
+
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -20,14 +21,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final inAppMessaging = FirebaseInAppMessaging.instance;
   final analytics = FirebaseAnalytics.instance;
   String? namaUser;
+  String? role;
+
 
   @override
   void initState() {
     super.initState();
+    _loadRole();
     _loadUserName();
     _triggerInAppMessage();
     _logInstallationId();
   }
+
+  Future<void> _loadRole() async {
+    final r = await service.getUserRole();
+    setState(() {
+      role = r;
+    });
+  }
+
 
   Future<void> _triggerInAppMessage() async {
     // Pastikan pesan tidak disuppress
@@ -58,98 +70,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Selamat Datang${namaUser != null ? ', $namaUser' : ''}'),
+ @override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(
+        role == 'kelurahan'
+            ? 'Dashboard Admin'
+            : 'Selamat Datang${namaUser != null ? ', $namaUser' : ''}',
       ),
-      body: StreamBuilder<List<Pengaduan>>(
-        stream: service.getPengaduanUser(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    ),
+    body: role == null
+        ? const Center(child: CircularProgressIndicator())
+        : StreamBuilder<List<Pengaduan>>(
+            stream: service.getPengaduanByRole(role!),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Belum ada pengaduan.'));
-          }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(child: Text('Belum ada pengaduan.'));
+              }
 
-          final list = snapshot.data!;
-          final total = list.length;
-          final selesai = list.where((e) => e.lokasi != null && e.lokasi!.isNotEmpty).length;
-          final proses = total - selesai;
+              final list = snapshot.data!;
+              final total = list.length;
+              final selesai = list
+                  .where((e) =>
+                      e.lokasi != null && e.lokasi!.isNotEmpty)
+                  .length;
+              final proses = total - selesai;
 
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Daftar Pengaduan Anda',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      role == 'kelurahan'
+                          ? 'Daftar Semua Pengaduan'
+                          : 'Daftar Pengaduan Anda',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+  child: ListView.builder(
+    itemCount: list.length,
+    itemBuilder: (context, index) {
+      final p = list[index];
+      return PengaduanCard(
+        pengaduan: p,
+        editable: true,
+      );
+    },
+  ),
+),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: list.length,
-                    itemBuilder: (context, index) {
-                      final p = list[index];
-                      return Card(
-                        child: ListTile(
-                          leading: p.gambarUrl != null
-                              ? Image.network(p.gambarUrl!, width: 60, fit: BoxFit.cover)
-                              : const Icon(Icons.report, color: Colors.redAccent),
-                          title: Text(
-                            p.isiPengaduan,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            p.createdAt.toLocal().toString().split('.')[0],
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DetailPengaduanScreen(pengaduan: p),
-                              ),
-                            );
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildCard(String title, int count, Color color) {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        width: 100,
-        child: Column(
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(title, style: const TextStyle(fontSize: 14)),
-          ],
-        ),
-      ),
-    );
-  }
+              );
+            },
+          ),
+  );
+}
 }

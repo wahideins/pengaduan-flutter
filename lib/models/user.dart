@@ -8,8 +8,8 @@ class UserModel {
   final String jalan;
   final String kelurahan;
   final String kecamatan;
-  final String NIK;   // 🔐 baru
-  final String NOKK;  // 🔐 baru
+  final String NIK;
+  final String NOKK; 
   final DateTime createdAt;
 
   UserModel({
@@ -41,7 +41,6 @@ class UserModel {
         'kelurahan': kelurahan,
         'kecamatan': kecamatan,
       },
-      // 🔐 tambahkan field terenkripsi
       'NIK': NIK,
       'NOKK': NOKK,
       'createdAt': createdAt.toIso8601String(),
@@ -66,7 +65,6 @@ class UserModel {
     );
   }
 
-  /// Membuat salinan baru UserModel (berguna setelah register, update UID, dll.)
   UserModel copyWith({String? uid}) {
     return UserModel(
       uid: uid ?? this.uid,
