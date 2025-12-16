@@ -11,7 +11,7 @@ class PengaduanPage extends StatelessWidget {
     final FirebaseService service = FirebaseService();
 
     return StreamBuilder<List<Pengaduan>>(
-      stream: service.getPengaduanUser(),
+      stream: service.getPengaduanPublik(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

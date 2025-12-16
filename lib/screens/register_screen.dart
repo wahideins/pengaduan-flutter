@@ -43,7 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   ];
   final List<String> kecamatanList = ['Mojoroto', 'Kota', 'Pesantren'];
 
-  static const String _demoAesKey = '0123456789abcdef0123456789abcdef'; // 32 chars
+  static const String _demoAesKey = '0123456789abcdef0123456789abcdef';
 
   Future<void> _pilihTanggal(BuildContext context) async {
     final tgl = await showDatePicker(

@@ -39,6 +39,28 @@ class FirebaseService {
     });
   }
 
+/// 🟢 Ambil semua pengaduan dengan visibility PUBLIC
+Stream<List<Pengaduan>> getPengaduanPublik() {
+  return _db.onValue.map((event) {
+    final data = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
+
+    return data.entries
+        .map((e) => Pengaduan.fromMap(
+              Map<String, dynamic>.from(e.value),
+              e.key,
+            ))
+        .where((p) => p.visibility == PengaduanVisibility.publik)
+        .toList();
+  });
+}
+
+Future<void> updateStatusPengaduan(String id, String status) async {
+  await _db
+      .child(id)
+      .update({'status': status});
+}
+
+
 
 
   /// 🟢 Tambah pengaduan baru, otomatis ambil data user login

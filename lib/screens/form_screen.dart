@@ -1,128 +1,147 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart' as geo;
+import 'package:image_picker/image_picker.dart';
+
 import '../models/pengaduan.dart';
 import '../services/firebase_service.dart';
 import '../services/supabase_service.dart';
+import './home/camera_x_screen.dart';
 import 'map_picker.dart';
-import 'package:geocoding/geocoding.dart' as geo;
+
+enum MediaSource { camera, gallery }
 
 class FormPengaduanScreen extends StatefulWidget {
-  const FormPengaduanScreen({super.key});
+  final File? initialImage;
+  final File? initialVideo;
+
+  const FormPengaduanScreen({
+    super.key,
+    this.initialImage,
+    this.initialVideo,
+  });
 
   @override
   State<FormPengaduanScreen> createState() => _FormPengaduanScreenState();
 }
 
 class _FormPengaduanScreenState extends State<FormPengaduanScreen> {
-  PengaduanVisibility _visibility = PengaduanVisibility.publik;
   final _formKey = GlobalKey<FormState>();
   final _isiController = TextEditingController();
   final _lokasiController = TextEditingController();
+
+  final _firebaseService = FirebaseService();
+  final _supabaseService = SupabaseService();
+  final _picker = ImagePicker();
+
   File? _gambarFile;
   File? _videoFile;
   bool _loading = false;
 
-  final _firebaseService = FirebaseService();
-  final _supabaseService = SupabaseService();
+  PengaduanVisibility _visibility = PengaduanVisibility.publik;
   Map<String, dynamic>? _userInfo;
 
   @override
   void initState() {
     super.initState();
     _loadUserInfo();
+
+    _gambarFile = widget.initialImage;
+    _videoFile = widget.initialVideo;
   }
 
   Future<void> _loadUserInfo() async {
     final info = await _firebaseService.getCurrentUserProfile();
-    setState(() {
-      _userInfo = info;
-    });
+    if (mounted) setState(() => _userInfo = info);
   }
 
-
-
-Future<String> _getAddressFromLatLng(double lat, double lng) async {
-  try {
-    final placemarks = await geo.placemarkFromCoordinates(lat, lng);
-    if (placemarks.isNotEmpty) {
-      final place = placemarks.first;
-      final jalan = place.street ?? '';
-      final kelurahan = place.subLocality ?? '';
-      final kecamatan = place.locality ?? '';
-      const kota = 'Kediri';
-      const negara = 'Indonesia';
-
-      return '$jalan, $kelurahan, $kecamatan, $kota, $negara';
+  /// ================= MEDIA HANDLER =================
+  void _handleMediaSelection(MediaSource source, bool isVideo) {
+    if (source == MediaSource.camera) {
+      _openCamera(isVideo: isVideo);
+    } else {
+      _pickFromGallery(isVideo: isVideo);
     }
-  } catch (e) {
-    debugPrint('Error reverse geocoding: $e');
   }
-  return 'Alamat tidak ditemukan';
-}
 
-
-  // ======== PILIH GAMBAR / VIDEO ========
-  Future<void> _showSourceDialog({required bool isImage}) async {
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isImage ? 'Pilih Sumber Gambar' : 'Pilih Sumber Video'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Kamera'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFile(isImage, ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo),
-              title: const Text('Galeri'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFile(isImage, ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
+  /// ================= CAMERA X =================
+  Future<void> _openCamera({required bool isVideo}) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CameraXScreen(enableVideo: isVideo),
       ),
     );
-  }
 
-  Future<void> _pickFile(bool isImage, ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = isImage
-        ? await picker.pickImage(source: source, imageQuality: 80)
-        : await picker.pickVideo(source: source);
-
-    if (picked != null) {
+    if (result != null && mounted) {
       setState(() {
-        if (isImage) {
-          _gambarFile = File(picked.path);
-        } else {
-          _videoFile = File(picked.path);
+        if (result['type'] == 'image') {
+          _gambarFile = result['file'];
+        } else if (result['type'] == 'video') {
+          _videoFile = result['file'];
         }
       });
     }
   }
 
-  // ======== LOKASI ========
-  Future<void> _showLocationOptions() async {
+  /// ================= GALLERY =================
+Future<void> _pickFromGallery({required bool isVideo}) async {
+  XFile? picked;
+
+  if (isVideo) {
+    picked = await _picker.pickVideo(
+      source: ImageSource.gallery,
+    );
+  } else {
+    picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+  }
+
+  if (picked != null && mounted) {
+    setState(() {
+      if (isVideo) {
+        _videoFile = File(picked!.path);
+      } else {
+        _gambarFile = File(picked!.path);
+      }
+    });
+  }
+}
+
+
+  /// ================= LOKASI =================
+  Future<String> _getAddress(double lat, double lng) async {
+    final placemarks = await geo.placemarkFromCoordinates(lat, lng);
+    if (placemarks.isNotEmpty) {
+      final p = placemarks.first;
+      return '${p.street}, ${p.subLocality}, ${p.locality}, Kediri, Indonesia';
+    }
+    return 'Alamat tidak ditemukan';
+  }
+
+  Future<void> _getCurrentLocation() async {
+    final permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied) return;
+
+    final pos = await Geolocator.getCurrentPosition();
+    final alamat = await _getAddress(pos.latitude, pos.longitude);
+    setState(() => _lokasiController.text = alamat);
+  }
+
+  void _showLocationOptions() {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => Wrap(
+      builder: (_) => Wrap(
         children: [
           ListTile(
             leading: const Icon(Icons.my_location),
             title: const Text('Gunakan Lokasi Saat Ini'),
             onTap: () async {
-              Navigator.pop(ctx);
+              Navigator.pop(context);
               await _getCurrentLocation();
             },
           ),
@@ -130,7 +149,7 @@ Future<String> _getAddressFromLatLng(double lat, double lng) async {
             leading: const Icon(Icons.map),
             title: const Text('Pilih di Peta'),
             onTap: () async {
-              Navigator.pop(ctx);
+              Navigator.pop(context);
               final picked = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const MapPickerScreen()),
@@ -145,51 +164,7 @@ Future<String> _getAddressFromLatLng(double lat, double lng) async {
     );
   }
 
-Future<void> _getCurrentLocation() async {
-  try {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Layanan lokasi tidak aktif')),
-      );
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Izin lokasi ditolak')),
-        );
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Izin lokasi ditolak permanen')),
-      );
-      return;
-    }
-
-    final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    final alamatLengkap =
-        await _getAddressFromLatLng(position.latitude, position.longitude);
-
-    setState(() {
-      _lokasiController.text = alamatLengkap;
-    });
-  } catch (e) {
-    debugPrint('Gagal mendapatkan lokasi: $e');
-  }
-}
-
-
-
-  // ======== SUBMIT ========
+  /// ================= SUBMIT =================
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
@@ -201,42 +176,39 @@ Future<void> _getCurrentLocation() async {
     if (_gambarFile != null) {
       gambarUrl = await _supabaseService.uploadFile(_gambarFile!, 'gambar');
     }
+
     if (_videoFile != null) {
       videoUrl = await _supabaseService.uploadFile(_videoFile!, 'video');
     }
 
-    final alamatLengkap = _userInfo != null
-        ? '${_userInfo!['alamat']['jalan']}, ${_userInfo!['alamat']['kelurahan']}, ${_userInfo!['alamat']['kecamatan']}, Kediri, Indonesia'
-        : 'Alamat tidak tersedia';
-
     final pengaduan = Pengaduan(
       userId: user.uid,
-      nama: _userInfo?['nama'] ?? user.displayName ?? 'Tanpa Nama',
-      alamat: alamatLengkap,
-      noTelp: _userInfo?['noTelp'] ?? user.phoneNumber ?? '-',
+      nama: _userInfo?['nama'] ?? 'Tanpa Nama',
+      alamat: _lokasiController.text,
+      noTelp: _userInfo?['noTelp'] ?? '-',
       isiPengaduan: _isiController.text.trim(),
       gambarUrl: gambarUrl,
       videoUrl: videoUrl,
-      lokasi: _lokasiController.text.trim().isEmpty ? null : _lokasiController.text.trim(),
+      lokasi: _lokasiController.text,
       createdAt: DateTime.now(),
       visibility: _visibility,
     );
 
     await _firebaseService.tambahPengaduan(pengaduan);
+
     setState(() => _loading = false);
 
-    if (context.mounted) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaduan berhasil dikirim!')),
+        const SnackBar(content: Text('Pengaduan berhasil dikirim')),
       );
       Navigator.pop(context);
     }
   }
 
+  /// ================= UI =================
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
     return Scaffold(
       appBar: AppBar(title: const Text('Form Pengaduan')),
       body: _userInfo == null
@@ -248,42 +220,21 @@ Future<void> _getCurrentLocation() async {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Informasi Pengguna',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Text('Nama: ${_userInfo?['nama'] ?? user?.displayName ?? 'Tanpa Nama'}'),
-                            Text('No. Telp: ${_userInfo?['noTelp'] ?? user?.phoneNumber ?? '-'}'),
-                            Text(
-                              'Alamat: ${_userInfo?['alamat']?['jalan'] ?? '-'}, '
-                              '${_userInfo?['alamat']?['kelurahan'] ?? '-'}, '
-                              '${_userInfo?['alamat']?['kecamatan'] ?? '-'}, Kediri, Indonesia',
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    /// ISI
                     TextFormField(
                       controller: _isiController,
-                      maxLines: 5,
+                      maxLines: 4,
                       decoration: const InputDecoration(
                         labelText: 'Isi Pengaduan',
                         border: OutlineInputBorder(),
                       ),
-                      validator: (v) => v == null || v.isEmpty ? 'Harus diisi' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Wajib diisi' : null,
                     ),
+
                     const SizedBox(height: 12),
 
-                    // Lokasi dengan tombol pilih
+                    /// LOKASI
                     TextFormField(
                       controller: _lokasiController,
                       readOnly: true,
@@ -296,64 +247,83 @@ Future<void> _getCurrentLocation() async {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 12),
 
+                    /// MEDIA BUTTON
                     Row(
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: () => _showSourceDialog(isImage: true),
-                          icon: const Icon(Icons.image),
-                          label: const Text('Upload Gambar'),
+                        PopupMenuButton<MediaSource>(
+                          onSelected: (v) =>
+                              _handleMediaSelection(v, false),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: MediaSource.camera,
+                              child: ListTile(
+                                leading: Icon(Icons.camera),
+                                title: Text('Kamera'),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: MediaSource.gallery,
+                              child: ListTile(
+                                leading: Icon(Icons.photo_library),
+                                title: Text('Galeri'),
+                              ),
+                            ),
+                          ],
+                          child: ElevatedButton.icon(
+                            onPressed: null,
+                            icon: const Icon(Icons.image),
+                            label: const Text('Foto'),
+                          ),
                         ),
-                        const SizedBox(width: 10),
-                        ElevatedButton.icon(
-                          onPressed: () => _showSourceDialog(isImage: false),
-                          icon: const Icon(Icons.videocam),
-                          label: const Text('Upload Video'),
+                        const SizedBox(width: 12),
+                        PopupMenuButton<MediaSource>(
+                          onSelected: (v) =>
+                              _handleMediaSelection(v, true),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: MediaSource.camera,
+                              child: ListTile(
+                                leading: Icon(Icons.videocam),
+                                title: Text('Kamera'),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: MediaSource.gallery,
+                              child: ListTile(
+                                leading: Icon(Icons.video_library),
+                                title: Text('Galeri'),
+                              ),
+                            ),
+                          ],
+                          child: ElevatedButton.icon(
+                            onPressed: null,
+                            icon: const Icon(Icons.videocam),
+                            label: const Text('Video'),
+                          ),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Status Pengaduan',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-
-                    RadioListTile<PengaduanVisibility>(
-                      title: const Text('Publik (dapat dilihat semua pengguna)'),
-                      value: PengaduanVisibility.publik,
-                      groupValue: _visibility,
-                      onChanged: (value) {
-                        setState(() {
-                          _visibility = value!;
-                        });
-                      },
-                    ),
-
-                    RadioListTile<PengaduanVisibility>(
-                      title: const Text('Privat (hanya pelapor & admin)'),
-                      value: PengaduanVisibility.privat,
-                      groupValue: _visibility,
-                      onChanged: (value) {
-                        setState(() {
-                          _visibility = value!;
-                        });
-                      },
-                    ),
-
                     if (_gambarFile != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Image.file(_gambarFile!, height: 120, fit: BoxFit.cover),
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Image.file(_gambarFile!, height: 120),
                       ),
+
                     if (_videoFile != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text('Video: ${_videoFile!.path.split('/').last}'),
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Video: ${_videoFile!.path.split('/').last}',
+                        ),
                       ),
-                    const SizedBox(height: 24),
+
+                    const SizedBox(height: 20),
+
+                    /// SUBMIT
                     _loading
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton.icon(
@@ -362,9 +332,7 @@ Future<void> _getCurrentLocation() async {
                             label: const Text('Kirim Pengaduan'),
                           ),
                   ],
-                  
                 ),
-                
               ),
             ),
     );
